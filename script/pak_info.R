@@ -38,6 +38,7 @@
  ## load up the data frame
  starwars <- starwars 
  
+## Perform data manipulation using dplyr
 ## subset a data frame, filter species names is Droid
 starwars %>% 
    filter(species == "Droid")
