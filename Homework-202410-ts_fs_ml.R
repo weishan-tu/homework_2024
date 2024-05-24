@@ -92,7 +92,7 @@ ts_anomalize_tbl_fill <- ts_anomalize_tbl |>
 ##plot fill gaps result
 ts_anomalize_tbl_fill |> 
   plot_time_series(DATE_year, observed, .facet_ncol = 2, .interactive = FALSE) 
-
+# 补的数据不会用到之后预测和特征提取
 #### 6. Extracting the features
 ## A) Calendar-based features
 ts_VERCah_VAI_density_features_C <- ts_VERCah_VAI_density |>
