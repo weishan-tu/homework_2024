@@ -78,22 +78,8 @@ ts_anomalize_tbl <- ts_VERCah_VAI_density |>
     .message       = FALSE
   )
 
-### 5. Fill in Gaps
-# Check the regularity of the time series
-ts_anomalize_tbl |>
-  tk_summary_diagnostics(.date_var = DATE)
-#
-library(padr)
-ts_anomalize_tbl_fill <- ts_anomalize_tbl |>
-  select(DATE,observed)|>
-  thicken( 'year')|> #aggregate the data first with thicken
-  pad_by_time(DATE_year, .by = "year")|>
-  mutate_at(vars(observed), .funs = ts_impute_vec, period = 1)
-##plot fill gaps result
-ts_anomalize_tbl_fill |> 
-  plot_time_series(DATE_year, observed, .facet_ncol = 2, .interactive = FALSE) 
-# 补的数据不会用到之后预测和特征提取
-#### 6. Extracting the features
+
+#### 5. Extracting the features
 ## A) Calendar-based features
 ts_VERCah_VAI_density_features_C <- ts_VERCah_VAI_density |>
   # Measure Transformation: variance reduction with Log(x+1)
@@ -163,11 +149,51 @@ plot_time_series_regression(.date_var = DATE,
                             .formula = DENSITY ~ as.numeric(DATE) + 
                               DENSITY_roll_3 + DENSITY_roll_6,
                             .show_summary = TRUE)
+
+# E) put all features together 
+ts_VERCah_VAI_density_features_all <- ts_VERCah_VAI_density |>
+  # Measure Transformation: variance reduction with Log(x+1)
+  mutate(DENSITY =  log1p(x = DENSITY)) |>
+  # Measure Transformation: standardization
+  mutate(DENSITY =  standardize_vec(DENSITY)) |>
+  # Add Calendar-based (or signature) features
+  tk_augment_timeseries_signature(.date_var = DATE) |>
+  select(-diff, -matches("(.xts$)|(.iso$)|(hour)|(minute)|(second)|(day)|(week)|(am.pm)")) |>
+  # dummy_cols(select_columns = c("month.lbl")) |>
+  select(-month.lbl) |>
+  mutate(index.num = normalize_vec(x = index.num)) |>
+  mutate(year = normalize_vec(x = year)) |>
+  # Add Fourier features
+  tk_augment_fourier(.date_var = DATE, .periods = 5, .K=1) |>
+  # Add lag features
+  # tk_augment_lags(.value = BIOMASS, .lags = c(4,7)) |>
+  # Add moving window statistics
+  tk_augment_slidify(.value   = contains("DENSITY"),
+                     .f       = ~ mean(.x, na.rm = TRUE), 
+                     .period  = c(9, 12),
+                     .partial = TRUE,
+                     .align   = "center")|>
+  glimpse()
+
+### 6. Fill in Gaps
+# Check the regularity of the time series
+ts_VERCah_VAI_density_features_all |>
+  tk_summary_diagnostics(.date_var = DATE)
+#
+library(padr)
+ts_anomalize_tbl_fill <- ts_VERCah_VAI_density_features_all|> 
+  pad_by_time(DATE, .by = "year")|>
+  mutate_at(vars(BIOMASS_lag4,BIOMASS_lag7), .funs = ts_impute_vec, period = 1)
+##plot fill gaps result
+# ts_anomalize_tbl_fill |> 
+#   plot_time_series(DATE_year, observed, .facet_ncol = 2, .interactive = FALSE) 
+
 #### 7. Building a forecast model with tidymodels package
 # This enables the analysis to be reproducible when random numbers are used 
 set.seed(2333)
+##use all feature
 # Put 3/4 of the data into the training set 
-data_split <- initial_split(ts_VERCah_VAI_density, prop = 3/4)
+data_split <- initial_split(ts_VERCah_VAI_density_features_all, prop = 3/4)
 
 # Create data frames for the two sets:
 train_data <- training(data_split)
